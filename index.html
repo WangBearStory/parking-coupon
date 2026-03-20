@@ -108,6 +108,29 @@
   </div>
 </div>
 
+<!-- 차량 상태 조회 -->
+<div class="config-section">
+  <h3>차량 상태 조회</h3>
+  <div class="config-row">
+    <label>조회 날짜</label>
+    <input type="date" id="statusDateInput">
+    <button class="btn-sm btn-primary" id="btnStatusQuery" onclick="runStatusQuery()">조회</button>
+  </div>
+  <div id="statusResult" style="margin-top:10px; display:none;">
+    <table style="width:100%; border-collapse:collapse; font-size:0.82em;">
+      <thead><tr>
+        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">차량</th>
+        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">상태</th>
+        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">입차</th>
+        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">출차</th>
+        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">쿠폰</th>
+        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">주차시간</th>
+      </tr></thead>
+      <tbody id="statusResultBody"></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- 버튼 -->
 <div class="btn-group">
   <button class="btn-primary" id="btnApply" onclick="runApplyCoupon()">쿠폰 적용</button>
@@ -222,7 +245,7 @@ function setStatus(state, text) {
 }
 
 function setButtons(disabled) {
-  ["btnApply", "btnCleanup", "btnTodayCleanup", "btnAll", "btnEntryTime"].forEach(id => {
+  ["btnApply", "btnCleanup", "btnTodayCleanup", "btnAll", "btnEntryTime", "btnStatusQuery"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = disabled;
   });
@@ -672,9 +695,108 @@ function showResults(results) {
   document.getElementById("resultSummary").style.display = "block";
 }
 
+// --- 차량 상태 조회 ---
+const STATUS_LABEL = {
+  inParking: "주차중", inExit: "출차대기", prePaid: "사전정산",
+  postPaid: "출차정산대기", postpayReserved: "후불예약",
+  manualExit: "수동출차", nonePaid: "무료출차", closed: "마감"
+};
+
+function initStatusDate() {
+  const now = new Date();
+  const kst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  const pad = n => String(n).padStart(2, "0");
+  document.getElementById("statusDateInput").value =
+    `${kst.getFullYear()}-${pad(kst.getMonth()+1)}-${pad(kst.getDate())}`;
+}
+
+function formatDuration(ms) {
+  if (ms < 0) return "-";
+  const totalMin = Math.floor(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}시간 ${m}분` : `${m}분`;
+}
+
+async function runStatusQuery() {
+  const dateVal = document.getElementById("statusDateInput").value;
+  if (!dateVal) { log("조회 날짜를 선택하세요", "error"); return; }
+  if (!vehicles.length) { log("대상 차량을 추가하세요", "error"); return; }
+
+  setButtons(true);
+  setStatus("running", "차량 상태 조회 중...");
+  const tbody = document.getElementById("statusResultBody");
+  tbody.innerHTML = "";
+
+  try {
+    log(`차량 상태 조회 시작 (${dateVal})`);
+    const token = await login();
+    log("로그인 성공", "success");
+    const c = cfg();
+    let totalRows = 0;
+
+    for (const vehicle of vehicles) {
+      const data = await apiRequest("GET",
+        `/vehicle-accesses?siteId=${c.site}&vehicle=${encodeURIComponent(vehicle)}&page=1&count=50`, token);
+      const records = (data.vehicleAccesses || []).filter(va => {
+        const created = parseDt(va.createdAt);
+        return created.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) === dateVal;
+      });
+
+      if (!records.length) {
+        log(`${vehicle}: ${dateVal} 기록 없음`, "info");
+        tbody.innerHTML += `<tr>
+          <td style="padding:6px;border-bottom:1px solid #333;">${vehicle}</td>
+          <td colspan="5" style="padding:6px;border-bottom:1px solid #333;color:#888;">기록 없음</td>
+        </tr>`;
+        continue;
+      }
+
+      for (const va of records) {
+        const entryAt = parseDt(va.entry.accessedAt);
+        const exitAt = va.exit ? parseDt(va.exit.accessedAt) : null;
+        const status = STATUS_LABEL[va.status] || va.status;
+        const coupons = ((va.payment || {}).discountCouponList || []);
+        const couponStr = coupons.length
+          ? coupons.map(cp => {
+              const key = cp.discountCouponKey || {};
+              return typeof key === "object" ? (key.name || "?") : "?";
+            }).join(", ")
+          : "-";
+        const duration = exitAt
+          ? formatDuration(exitAt - entryAt)
+          : formatDuration(new Date() - entryAt);
+        const durationSuffix = exitAt ? "" : " (진행중)";
+        const statusColor = va.status === "inParking" ? "#66bb6a"
+          : va.status === "closed" ? "#888" : "#ffa726";
+
+        tbody.innerHTML += `<tr>
+          <td style="padding:6px;border-bottom:1px solid #333;">${va.vehicle}</td>
+          <td style="padding:6px;border-bottom:1px solid #333;color:${statusColor};">${status}</td>
+          <td style="padding:6px;border-bottom:1px solid #333;">${kstStr(entryAt)}</td>
+          <td style="padding:6px;border-bottom:1px solid #333;">${exitAt ? kstStr(exitAt) : "-"}</td>
+          <td style="padding:6px;border-bottom:1px solid #333;">${couponStr}</td>
+          <td style="padding:6px;border-bottom:1px solid #333;">${duration}${durationSuffix}</td>
+        </tr>`;
+        totalRows++;
+      }
+      log(`${vehicle}: ${records.length}건 조회됨`, "success");
+    }
+
+    document.getElementById("statusResult").style.display = totalRows > 0 ? "block" : "none";
+    log(`조회 완료: 총 ${totalRows}건`, "success");
+    setStatus("done", `조회 완료 (${totalRows}건)`);
+  } catch (e) {
+    log(`오류: ${e.message}`, "error");
+    setStatus("fail", "오류 발생");
+  }
+  setButtons(false);
+}
+
 // 초기 렌더
 renderVehicles();
 initEntryTime();
+initStatusDate();
 </script>
 </body>
 </html>
