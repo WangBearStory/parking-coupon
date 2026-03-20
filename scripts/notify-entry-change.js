@@ -6,11 +6,9 @@ const PAGE_URL = "https://wangbearstory.github.io/parking-coupon/change-entry.ht
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN || "";
 
-// 채널별 차량 매핑
+// 사용자별 차량 매핑
 const CHANNEL_VEHICLES = [
-  { channel: "D0ADC7GSNM8", vehicle: "127조9937" },
-  { channel: "D0AD5RJ7JFM", vehicle: "16마1011" },
-  { channel: "D0ADWM544F7", vehicle: "328서3376" },
+  { channel: "U0ADA5TB3TQ", vehicle: "127조9937" },
 ];
 
 async function apiRequest(method, path, token, body) {
