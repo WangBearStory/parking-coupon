@@ -62,6 +62,15 @@
   .result-summary th, .result-summary td { padding: 8px 6px; text-align: left; border-bottom: 1px solid #333; }
   .result-summary th { color: #aaa; }
 
+  .va-card { background: #0f3460; border: 1px solid #333; border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+  .va-card .va-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .va-card .va-vehicle { font-weight: 700; font-size: 1em; }
+  .va-card .va-status { font-size: 0.85em; padding: 2px 8px; border-radius: 10px; }
+  .va-card .va-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 0.82em; }
+  .va-card .va-label { color: #aaa; }
+  .va-card .va-value { color: #e0e0e0; }
+  .va-card .va-divider { border-top: 1px solid #333; margin: 6px 0; }
+
   @media (max-width: 480px) {
     body { padding: 8px; }
     h1 { font-size: 1.1em; margin-bottom: 12px; }
@@ -116,19 +125,7 @@
     <input type="date" id="statusDateInput">
     <button class="btn-sm btn-primary" id="btnStatusQuery" onclick="runStatusQuery()">조회</button>
   </div>
-  <div id="statusResult" style="margin-top:10px; display:none;">
-    <table style="width:100%; border-collapse:collapse; font-size:0.82em;">
-      <thead><tr>
-        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">차량</th>
-        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">상태</th>
-        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">입차</th>
-        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">출차</th>
-        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">쿠폰</th>
-        <th style="padding:8px 6px; text-align:left; border-bottom:1px solid #555; color:#aaa;">주차시간</th>
-      </tr></thead>
-      <tbody id="statusResultBody"></tbody>
-    </table>
-  </div>
+  <div id="statusResult" style="margin-top:10px; display:none;"></div>
 </div>
 
 <!-- 버튼 -->
@@ -725,8 +722,8 @@ async function runStatusQuery() {
 
   setButtons(true);
   setStatus("running", "차량 상태 조회 중...");
-  const tbody = document.getElementById("statusResultBody");
-  tbody.innerHTML = "";
+  const container = document.getElementById("statusResult");
+  container.innerHTML = "";
 
   try {
     log(`차량 상태 조회 시작 (${dateVal})`);
@@ -745,45 +742,57 @@ async function runStatusQuery() {
 
       if (!records.length) {
         log(`${vehicle}: ${dateVal} 기록 없음`, "info");
-        tbody.innerHTML += `<tr>
-          <td style="padding:6px;border-bottom:1px solid #333;">${vehicle}</td>
-          <td colspan="5" style="padding:6px;border-bottom:1px solid #333;color:#888;">기록 없음</td>
-        </tr>`;
+        container.innerHTML += `<div class="va-card" style="color:#888; text-align:center;">${vehicle}: 기록 없음</div>`;
         continue;
       }
 
       for (const va of records) {
+        const createdAt = parseDt(va.createdAt);
         const entryAt = parseDt(va.entry.accessedAt);
         const exitAt = va.exit ? parseDt(va.exit.accessedAt) : null;
         const status = STATUS_LABEL[va.status] || va.status;
-        const coupons = ((va.payment || {}).discountCouponList || []);
-        const couponStr = coupons.length
-          ? coupons.map(cp => {
-              const key = cp.discountCouponKey || {};
-              return typeof key === "object" ? (key.name || "?") : "?";
-            }).join(", ")
-          : "-";
+        const statusColor = va.status === "inParking" ? "#66bb6a"
+          : va.status === "closed" ? "#888" : "#ffa726";
+        const statusBg = va.status === "inParking" ? "#1b3a2a"
+          : va.status === "closed" ? "#2a2a2a" : "#3a2e1b";
+
         const duration = exitAt
           ? formatDuration(exitAt - entryAt)
           : formatDuration(new Date() - entryAt);
         const durationSuffix = exitAt ? "" : " (진행중)";
-        const statusColor = va.status === "inParking" ? "#66bb6a"
-          : va.status === "closed" ? "#888" : "#ffa726";
 
-        tbody.innerHTML += `<tr>
-          <td style="padding:6px;border-bottom:1px solid #333;">${va.vehicle}</td>
-          <td style="padding:6px;border-bottom:1px solid #333;color:${statusColor};">${status}</td>
-          <td style="padding:6px;border-bottom:1px solid #333;">${kstStr(entryAt)}</td>
-          <td style="padding:6px;border-bottom:1px solid #333;">${exitAt ? kstStr(exitAt) : "-"}</td>
-          <td style="padding:6px;border-bottom:1px solid #333;">${couponStr}</td>
-          <td style="padding:6px;border-bottom:1px solid #333;">${duration}${durationSuffix}</td>
-        </tr>`;
+        const coupons = ((va.payment || {}).discountCouponList || []);
+        let couponHtml = '<span style="color:#888;">없음</span>';
+        if (coupons.length) {
+          couponHtml = coupons.map(cp => {
+            const key = cp.discountCouponKey || {};
+            const name = typeof key === "object" ? (key.name || "?") : "?";
+            const applyAt = (cp.uses && cp.uses.applyAt) ? kstStr(parseDt(cp.uses.applyAt)) : "-";
+            return `${name} <span style="color:#aaa;">(적용: ${applyAt})</span>`;
+          }).join("<br>");
+        }
+
+        const diffMin = Math.round(Math.abs(createdAt - entryAt) / 60000);
+
+        container.innerHTML += `<div class="va-card">
+          <div class="va-header">
+            <span class="va-vehicle">${va.vehicle}</span>
+            <span class="va-status" style="color:${statusColor};background:${statusBg};">${status}</span>
+          </div>
+          <div class="va-row"><span class="va-label">생성시간</span><span class="va-value">${kstStr(createdAt)}</span></div>
+          <div class="va-row"><span class="va-label">입차시간</span><span class="va-value">${kstStr(entryAt)}</span></div>
+          <div class="va-row"><span class="va-label">출차시간</span><span class="va-value">${exitAt ? kstStr(exitAt) : "-"}</span></div>
+          <div class="va-row"><span class="va-label">주차시간</span><span class="va-value">${duration}${durationSuffix}</span></div>
+          <div class="va-row"><span class="va-label">생성↔입차</span><span class="va-value" style="color:${diffMin >= 2 ? '#ffa726' : '#66bb6a'};">${diffMin}분</span></div>
+          <div class="va-divider"></div>
+          <div class="va-row"><span class="va-label">쿠폰</span><span class="va-value">${couponHtml}</span></div>
+        </div>`;
         totalRows++;
       }
       log(`${vehicle}: ${records.length}건 조회됨`, "success");
     }
 
-    document.getElementById("statusResult").style.display = totalRows > 0 ? "block" : "none";
+    container.style.display = totalRows > 0 ? "block" : "none";
     log(`조회 완료: 총 ${totalRows}건`, "success");
     setStatus("done", `조회 완료 (${totalRows}건)`);
   } catch (e) {
