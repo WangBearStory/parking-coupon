@@ -9,6 +9,8 @@ const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN || "";
 // 사용자별 차량 매핑
 const CHANNEL_VEHICLES = [
   { channel: "U0ADA5TB3TQ", vehicle: "127조9937" },
+  { channel: "U0AE6FTUWQ0", vehicle: "16마1011" },
+  { channel: "U0AE046CVLJ", vehicle: "328서3376" },
 ];
 
 async function apiRequest(method, path, token, body) {
