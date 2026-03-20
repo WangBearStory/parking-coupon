@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>주차 쿠폰 자동 적용</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 12px; min-height: 100vh; }
+
+  /* 잠금 화면 */
+  #lockScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a2e; display: flex; justify-content: center; align-items: center; z-index: 9999; }
+  #lockScreen .lock-box { text-align: center; }
+  #lockScreen h2 { color: #00d2ff; margin-bottom: 20px; font-size: 1.2em; }
+  #lockScreen input { background: #0f3460; border: 1px solid #333; color: #e0e0e0; padding: 12px 16px; border-radius: 8px; font-size: 16px; width: 220px; text-align: center; }
+  #lockScreen button { margin-top: 12px; padding: 12px 32px; background: #00d2ff; color: #1a1a2e; border: none; border-radius: 8px; font-size: 1em; font-weight: 600; cursor: pointer; display: block; width: 220px; }
+  #lockScreen .lock-error { color: #ef5350; font-size: 0.85em; margin-top: 10px; min-height: 1.2em; }
+  #appContent { display: none; }
+  h1 { text-align: center; margin-bottom: 16px; color: #00d2ff; font-size: 1.3em; }
+
+  .config-section { background: #16213e; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  .config-section h3 { color: #00d2ff; margin-bottom: 10px; font-size: 0.95em; }
+  .config-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .config-row label { min-width: 70px; font-size: 0.85em; color: #aaa; }
+  .config-row input, .config-row select { background: #0f3460; border: 1px solid #333; color: #e0e0e0; padding: 8px 10px; border-radius: 6px; font-size: 16px; -webkit-appearance: none; }
+  .config-row input[type="text"] { flex: 1; min-width: 0; }
+  .config-row input[type="datetime-local"] { flex: 1; min-width: 0; }
+
+  .vehicle-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .vehicle-tag { background: #0f3460; border: 1px solid #00d2ff44; padding: 6px 12px; border-radius: 16px; font-size: 0.9em; display: flex; align-items: center; gap: 8px; }
+  .vehicle-tag .remove { cursor: pointer; color: #ff6b6b; font-weight: bold; font-size: 1.1em; padding: 0 2px; }
+  #vehicleInput { width: 140px; }
+
+  .btn-group { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 12px 0; }
+  button { padding: 12px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.95em; font-weight: 600; transition: all 0.2s; -webkit-tap-highlight-color: transparent; }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .btn-primary { background: #00d2ff; color: #1a1a2e; }
+  .btn-secondary { background: #533483; color: #fff; }
+  .btn-danger { background: #e94560; color: #fff; }
+  .btn-sm { padding: 8px 14px; font-size: 0.85em; }
+
+  .log-area { background: #0a0a1a; border: 1px solid #333; border-radius: 8px; padding: 10px; max-height: 400px; overflow-y: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.78em; line-height: 1.5; -webkit-overflow-scrolling: touch; word-break: break-all; }
+  .log-line { padding: 2px 0; }
+  .log-line.info { color: #90caf9; }
+  .log-line.success { color: #66bb6a; }
+  .log-line.warn { color: #ffa726; }
+  .log-line.error { color: #ef5350; }
+
+  .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .status-indicator { display: flex; align-items: center; gap: 6px; font-size: 0.85em; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot.idle { background: #666; }
+  .dot.running { background: #ffa726; animation: pulse 1s infinite; }
+  .dot.done { background: #66bb6a; }
+  .dot.fail { background: #ef5350; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .result-summary { background: #16213e; border-radius: 8px; padding: 12px; margin-top: 12px; display: none; }
+  .result-summary h3 { color: #00d2ff; margin-bottom: 8px; font-size: 0.95em; }
+  .result-summary table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+  .result-summary th, .result-summary td { padding: 8px 6px; text-align: left; border-bottom: 1px solid #333; }
+  .result-summary th { color: #aaa; }
+
+  @media (max-width: 480px) {
+    body { padding: 8px; }
+    h1 { font-size: 1.1em; margin-bottom: 12px; }
+    .config-row label { min-width: 60px; font-size: 0.82em; }
+    .btn-group { grid-template-columns: 1fr 1fr; gap: 6px; }
+    button { padding: 14px 10px; font-size: 0.9em; }
+    .log-area { max-height: 300px; font-size: 0.72em; padding: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 잠금 화면 -->
+<div id="lockScreen">
+  <div class="lock-box">
+    <h2>Access Code</h2>
+    <input type="password" id="lockInput" placeholder="코드 입력" autocomplete="off">
+    <button onclick="unlock()">확인</button>
+    <div class="lock-error" id="lockError"></div>
+  </div>
+</div>
+
+<div id="appContent">
+<h1>주차 쿠폰 자동 적용 / 기록 정리</h1>
+
+<!-- 설정 -->
+<div class="config-section">
+  <h3>설정</h3>
+  <div class="config-row">
+    <label>대상 차량</label>
+    <input type="text" id="vehicleInput" placeholder="차량번호 입력">
+    <button class="btn-sm btn-primary" onclick="addVehicle()">추가</button>
+  </div>
+  <div class="vehicle-list" id="vehicleList"></div>
+</div>
+
+<!-- 입차시간 변경 -->
+<div class="config-section">
+  <h3>입차시간 변경</h3>
+  <div class="config-row">
+    <label>변경 시간</label>
+    <input type="datetime-local" id="entryTimeInput" step="60">
+    <button class="btn-sm btn-secondary" id="btnEntryTime" onclick="runChangeEntryTime()">실행</button>
+  </div>
+</div>
+
+<!-- 버튼 -->
+<div class="btn-group">
+  <button class="btn-primary" id="btnApply" onclick="runApplyCoupon()">쿠폰 적용</button>
+  <button class="btn-secondary" id="btnCleanup" onclick="runCleanup()">전날 정리</button>
+  <button class="btn-primary" id="btnTodayCleanup" onclick="runTodayCleanup()">오늘 정리</button>
+  <button class="btn-primary" id="btnAll" onclick="runAll()">쿠폰 + 전날정리</button>
+  <button class="btn-danger" id="btnClear" onclick="clearLog()">로그 초기화</button>
+</div>
+
+<!-- 상태 / 로그 -->
+<div class="status-bar">
+  <div class="status-indicator">
+    <div class="dot idle" id="statusDot"></div>
+    <span id="statusText">대기</span>
+  </div>
+</div>
+<div class="log-area" id="logArea"></div>
+
+<!-- 결과 요약 -->
+<div class="result-summary" id="resultSummary">
+  <h3>결과 요약</h3>
+  <table><thead><tr><th>차량</th><th>결과</th></tr></thead><tbody id="resultBody"></tbody></table>
+</div>
+
+</div><!-- /appContent -->
+
+<script>
+// --- 잠금 해제 ---
+const PASS_HASH = "35906dbba2c9d0fba1126d2e9ed64208216285c60b539376fd4380127028c50b";
+
+async function sha256(text) {
+  const data = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function unlock() {
+  const input = document.getElementById("lockInput").value;
+  const hash = await sha256(input);
+  if (hash === PASS_HASH) {
+    document.getElementById("lockScreen").style.display = "none";
+    document.getElementById("appContent").style.display = "block";
+    sessionStorage.setItem("unlocked", "1");
+  } else {
+    document.getElementById("lockError").textContent = "코드가 올바르지 않습니다";
+  }
+}
+
+document.getElementById("lockInput").addEventListener("keydown", e => { if (e.key === "Enter") unlock(); });
+
+// 세션 내 재접속 시 자동 잠금 해제
+if (sessionStorage.getItem("unlocked") === "1") {
+  document.getElementById("lockScreen").style.display = "none";
+  document.getElementById("appContent").style.display = "block";
+}
+
+// --- 상수 ---
+const OWNER_ID = "66a9c4f0c920064e4a47abc9";
+const COUPON_KEY_2H = "6690e5b8ebc44ff5ad8a1713";
+const COUPON_DURATION = {
+  "66860826a0b22bef3d9d9a5d": 1440,
+  "6690d11bebc44ff5ad7ff7a6": 30,
+  "6690d12d2532bf9ca77f06ef": 60,
+  "668608551b46b9842cc665a1": 60,
+  "6690e5b8ebc44ff5ad8a1713": 120,
+  "67ee2428eff0590c0b760edc": 180,
+  "668608911b46b9842cc6835f": 240,
+};
+
+// --- 차량 목록 ---
+let vehicles = [];
+
+function renderVehicles() {
+  const el = document.getElementById("vehicleList");
+  el.innerHTML = vehicles.map((v, i) =>
+    `<span class="vehicle-tag">${v}<span class="remove" onclick="removeVehicle(${i})">x</span></span>`
+  ).join("");
+}
+
+function addVehicle() {
+  const input = document.getElementById("vehicleInput");
+  const v = input.value.trim();
+  if (v && !vehicles.includes(v)) { vehicles.push(v); renderVehicles(); }
+  input.value = "";
+}
+
+function removeVehicle(i) { vehicles.splice(i, 1); renderVehicles(); }
+
+document.getElementById("vehicleInput").addEventListener("keydown", e => { if (e.key === "Enter") addVehicle(); });
+
+// --- 로그 ---
+function log(msg, cls = "info") {
+  const area = document.getElementById("logArea");
+  const now = new Date().toLocaleTimeString("ko-KR", { hour12: false });
+  const div = document.createElement("div");
+  div.className = `log-line ${cls}`;
+  div.textContent = `[${now}] ${msg}`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById("logArea").innerHTML = "";
+  document.getElementById("resultSummary").style.display = "none";
+}
+
+function setStatus(state, text) {
+  const dot = document.getElementById("statusDot");
+  const txt = document.getElementById("statusText");
+  dot.className = `dot ${state}`;
+  txt.textContent = text;
+}
+
+function setButtons(disabled) {
+  ["btnApply", "btnCleanup", "btnTodayCleanup", "btnAll", "btnEntryTime"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disabled;
+  });
+}
+
+function initEntryTime() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  const val = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  document.getElementById("entryTimeInput").value = val;
+}
+setInterval(initEntryTime, 60000);
+
+// --- API ---
+const API_URL = "https://dev-sni-admin.eyevacs.com";
+const LOGIN_ID = "alstn5632";
+const LOGIN_PW = "mirero2816!";
+const SITE_ID = "SBI_EYEVACS_0032";
+
+function cfg() {
+  return { api: API_URL, id: LOGIN_ID, pw: LOGIN_PW, site: SITE_ID };
+}
+
+async function apiRequest(method, path, token, body) {
+  const c = cfg();
+  const url = c.api + path;
+  const opts = { method, headers: { "Content-Type": "application/json" } };
+  if (token) opts.headers["Authorization"] = `Bearer ${token}`;
+  if (body) opts.body = JSON.stringify(body);
+  const resp = await fetch(url, opts);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`HTTP ${resp.status}: ${text.substring(0, 200)}`);
+  }
+  return resp.json();
+}
+
+async function login() {
+  const c = cfg();
+  const data = await apiRequest("POST", "/auth/token", null, { id: c.id, password: c.pw });
+  return data.access_token;
+}
+
+function parseDt(iso) {
+  return new Date(iso);
+}
+
+function toIso(dt) {
+  return dt.toISOString().replace(/\.\d{3}Z$/, ".000Z");
+}
+
+function kstStr(dt) {
+  const d = dt.toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" });
+  const t = dt.toLocaleTimeString("ko-KR", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "Asia/Seoul" });
+  return `${d} ${t}`;
+}
+
+async function getVehicle(token, vehicle) {
+  const c = cfg();
+  const data = await apiRequest("GET", `/vehicle-accesses?siteId=${c.site}&vehicle=${encodeURIComponent(vehicle)}&status=inParking`, token);
+  const items = data.vehicleAccesses || [];
+  return items.length ? items[0] : null;
+}
+
+function hasFreeCoupon(va) {
+  const coupons = (va.payment || {}).discountCouponList || [];
+  return coupons.some(cp => {
+    const key = cp.discountCouponKey || {};
+    return typeof key === "object" && (key.name || "").includes("방문자확인");
+  });
+}
+
+async function getNextCoupon(token) {
+  const data = await apiRequest("GET", `/discount-coupon-keys/coupon?owner=${OWNER_ID}&ownerModel=Admin`, token);
+  for (const key of (data.discountCouponKeys || [])) {
+    if (key._id === COUPON_KEY_2H) return { nextCoupon: key.nextCoupon, count: key.count || 0 };
+  }
+  return { nextCoupon: null, count: 0 };
+}
+
+async function applyCoupon(token, va, couponId) {
+  const vaId = va._id;
+  let detail = await apiRequest("GET", `/vehicle-accesses/${vaId}`, token);
+  if (detail.vehicleAccess) detail = detail.vehicleAccess;
+  const existing = ((detail.payment || {}).discountCouponList || []).map(cp => cp._id);
+  existing.push(couponId);
+  await apiRequest("PATCH", `/vehicle-accesses/${vaId}`, token, { payment: { discountCouponList: existing } });
+}
+
+// --- 쿠폰 적용 ---
+async function runApplyCoupon() {
+  setButtons(true);
+  setStatus("running", "쿠폰 적용 중...");
+  const results = [];
+  try {
+    log("쿠폰 자동 적용 시작");
+    const token = await login();
+    log("로그인 성공", "success");
+
+    for (const vehicle of vehicles) {
+      const va = await getVehicle(token, vehicle);
+      if (!va) { log(`${vehicle}: 입차 기록 없음 (미입차)`, "warn"); results.push([vehicle, "미입차"]); continue; }
+      if (hasFreeCoupon(va)) { log(`${vehicle}: 무료쿠폰 이미 적용됨, 생략`, "info"); results.push([vehicle, "이미 적용됨"]); continue; }
+      const { nextCoupon, count } = await getNextCoupon(token);
+      if (!nextCoupon) { log(`${vehicle}: 2시간무료 쿠폰 없음 (잔여: ${count})`, "error"); results.push([vehicle, "쿠폰 없음"]); continue; }
+      await applyCoupon(token, va, nextCoupon);
+      log(`${vehicle}: 2시간무료 쿠폰 적용 완료 (잔여: ${count - 1})`, "success");
+      results.push([vehicle, "적용 완료"]);
+    }
+    setStatus("done", "쿠폰 적용 완료");
+  } catch (e) {
+    log(`오류: ${e.message}`, "error");
+    setStatus("fail", "오류 발생");
+  }
+  showResults(results);
+  setButtons(false);
+}
+
+// --- 기록 정리 ---
+function getCleanupDates() {
+  const now = new Date();
+  const kstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  const dates = [];
+  if (kstNow.getDay() === 1) { // 월요일
+    for (let d = 1; d <= 3; d++) {
+      const t = new Date(kstNow); t.setDate(t.getDate() - d);
+      dates.push(t.toISOString().slice(0, 10));
+    }
+  } else {
+    const t = new Date(kstNow); t.setDate(t.getDate() - 1);
+    dates.push(t.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
+function getCouponMaxMinutes(va) {
+  const coupons = (va.payment || {}).discountCouponList || [];
+  let max = 0;
+  for (const cp of coupons) {
+    const key = cp.discountCouponKey || {};
+    const keyId = typeof key === "object" ? (key._id || "") : String(key);
+    const dur = COUPON_DURATION[keyId] || 0;
+    if (dur > max) max = dur;
+  }
+  return max;
+}
+
+function randInt(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+
+async function cleanupRecord(token, va) {
+  const vaId = va._id;
+  const vehicle = va.vehicle;
+  const created = parseDt(va.createdAt);
+  const oldEntry = parseDt(va.entry.accessedAt);
+  const oldExit = va.exit ? parseDt(va.exit.accessedAt) : null;
+  const entryFac = va.entry.facility._id;
+  const exitFac = va.exit && va.exit.facility ? va.exit.facility._id : entryFac.replace("entrance", "exit");
+
+  // 새 입차: createdAt + 1분 (다른 차량 평균 0~53초와 유사)
+  const newEntry = new Date(created.getTime() + 60000);
+  await apiRequest("PATCH", `/vehicle-accesses/${vaId}`, token, {
+    entry: { accessedAt: toIso(newEntry), facility: entryFac }
+  });
+
+  // 새 출차: 쿠폰 있으면 쿠폰시간 내, 없으면 무료시간 내
+  const couponMin = getCouponMaxMinutes(va);
+  let parkMin;
+  if (couponMin > 0) { parkMin = couponMin - randInt(10, 20); }
+  else { parkMin = randInt(20, 25); }
+  let newExit = new Date(newEntry.getTime() + parkMin * 60000);
+
+  // UTC 날짜 경계 보정: 출차가 입차의 UTC 날짜를 넘지 않도록
+  const entryUtcDate = newEntry.toISOString().slice(0, 10);
+  const exitUtcDate = newExit.toISOString().slice(0, 10);
+  if (exitUtcDate !== entryUtcDate) {
+    // UTC 자정 직전(23:50~23:55)으로 조정
+    const midnight = new Date(newEntry);
+    midnight.setUTCHours(23, 50 + randInt(0, 5), randInt(0, 59), 0);
+    newExit = midnight;
+    parkMin = Math.round((newExit - newEntry) / 60000);
+    log(`  ${vehicle}: UTC 날짜 경계 보정 (출차를 ${exitUtcDate} → ${entryUtcDate} 23:5x로 조정)`, "warn");
+  }
+
+  await apiRequest("PATCH", `/vehicle-accesses/${vaId}`, token, {
+    exit: { accessedAt: toIso(newExit), facility: exitFac }
+  });
+
+  const info = `입차${kstStr(oldEntry)}->${kstStr(newEntry)} 출차${oldExit ? kstStr(oldExit) : "?"}->${kstStr(newExit)}`;
+  log(`  ${vehicle}: ${info} (${couponMin > 0 ? "쿠폰" + couponMin + "분" : "무료"}, ${parkMin}분)`, "success");
+  return info;
+}
+
+async function runCleanup() {
+  setButtons(true);
+  setStatus("running", "기록 정리 중...");
+  const results = [];
+  try {
+    log("전날 주차기록 정리 시작");
+    const token = await login();
+    log("로그인 성공", "success");
+
+    const dates = getCleanupDates();
+    log(`정리 대상 날짜: ${dates.join(", ")}`);
+    const c = cfg();
+
+    let total = 0;
+    for (const vehicle of vehicles) {
+      const data = await apiRequest("GET", `/vehicle-accesses?siteId=${c.site}&vehicle=${encodeURIComponent(vehicle)}&page=1&count=50`, token);
+      const dateRecords = [];
+      const targets = [];
+      for (const va of (data.vehicleAccesses || [])) {
+        const created = parseDt(va.createdAt);
+        const createdKst = created.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+        if (!dates.includes(createdKst)) continue;
+        const entryAt = parseDt(va.entry.accessedAt);
+        const exitAt = va.exit ? parseDt(va.exit.accessedAt) : null;
+        const diffMin = Math.abs(created - entryAt) / 60000;
+        dateRecords.push(va);
+        const coupons = ((va.payment || {}).discountCouponList || []);
+        let couponInfo = "";
+        if (coupons.length) {
+          couponInfo = coupons.map(cp => {
+            const key = cp.discountCouponKey || {};
+            const name = typeof key === "object" ? (key.name || "?") : "?";
+            const applyAt = (cp.uses && cp.uses.applyAt) ? kstStr(parseDt(cp.uses.applyAt)) : "?";
+            return `${name}(${applyAt})`;
+          }).join(", ");
+        } else {
+          couponInfo = "없음";
+        }
+        log(`  ${vehicle} | 상태:${va.status} | 입차:${kstStr(entryAt)} | 출차:${exitAt ? kstStr(exitAt) : "-"} | 쿠폰:${couponInfo} | 생성↔입차:${Math.round(diffMin)}분`, "info");
+        if (va.status === "inParking") continue;
+        if (diffMin >= 30) {
+          log(`    → 정리 대상 (차이 ${Math.round(diffMin)}분)`, "warn");
+          targets.push(va);
+        }
+      }
+      if (!dateRecords.length) { log(`${vehicle}: 해당 날짜 기록 없음`, "info"); continue; }
+      if (!targets.length) { log(`${vehicle}: ${dateRecords.length}건 조회, 정리 대상 없음`, "info"); continue; }
+      for (const va of targets) {
+        try {
+          const info = await cleanupRecord(token, va);
+          results.push([vehicle, info]);
+          total++;
+        } catch (e) {
+          log(`${vehicle} 정리 오류: ${e.message}`, "error");
+          results.push([vehicle, `오류: ${e.message}`]);
+        }
+      }
+    }
+    log(`정리 완료: ${total}건`, "success");
+    setStatus("done", `기록 정리 완료 (${total}건)`);
+  } catch (e) {
+    log(`오류: ${e.message}`, "error");
+    setStatus("fail", "오류 발생");
+  }
+  showResults(results);
+  setButtons(false);
+}
+
+// --- 오늘 기록 정리 ---
+function getTodayKst() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+}
+
+async function runTodayCleanup() {
+  setButtons(true);
+  setStatus("running", "오늘 기록 정리 중...");
+  const results = [];
+  try {
+    log("오늘 주차기록 정리 시작");
+    const token = await login();
+    log("로그인 성공", "success");
+
+    const today = getTodayKst();
+    log(`정리 대상 날짜: ${today} (KST)`);
+    const c = cfg();
+
+    let total = 0;
+    for (const vehicle of vehicles) {
+      const data = await apiRequest("GET", `/vehicle-accesses?siteId=${c.site}&vehicle=${encodeURIComponent(vehicle)}&page=1&count=50`, token);
+      const todayRecords = [];
+      const targets = [];
+      for (const va of (data.vehicleAccesses || [])) {
+        const created = parseDt(va.createdAt);
+        const createdKst = created.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+        if (createdKst !== today) continue;
+        const entryAt = parseDt(va.entry.accessedAt);
+        const exitAt = va.exit ? parseDt(va.exit.accessedAt) : null;
+        const diffMin = Math.abs(created - entryAt) / 60000;
+        todayRecords.push(va);
+        const coupons = ((va.payment || {}).discountCouponList || []);
+        let couponInfo = "";
+        if (coupons.length) {
+          couponInfo = coupons.map(cp => {
+            const key = cp.discountCouponKey || {};
+            const name = typeof key === "object" ? (key.name || "?") : "?";
+            const applyAt = (cp.uses && cp.uses.applyAt) ? kstStr(parseDt(cp.uses.applyAt)) : "?";
+            return `${name}(${applyAt})`;
+          }).join(", ");
+        } else {
+          couponInfo = "없음";
+        }
+        log(`  ${vehicle} | 상태:${va.status} | 입차:${kstStr(entryAt)} | 출차:${exitAt ? kstStr(exitAt) : "-"} | 쿠폰:${couponInfo} | 생성↔입차:${Math.round(diffMin)}분`, "info");
+        if (va.status === "inParking") continue;
+        if (diffMin >= 2) {
+          log(`    → 정리 대상 (차이 ${Math.round(diffMin)}분)`, "warn");
+          targets.push(va);
+        }
+      }
+      if (!todayRecords.length) { log(`${vehicle}: 오늘 기록 없음`, "info"); continue; }
+      if (!targets.length) { log(`${vehicle}: 오늘 ${todayRecords.length}건 조회, 정리 대상 없음`, "info"); continue; }
+      for (const va of targets) {
+        try {
+          const info = await cleanupRecord(token, va);
+          results.push([vehicle, info]);
+          total++;
+        } catch (e) {
+          log(`${vehicle} 정리 오류: ${e.message}`, "error");
+          results.push([vehicle, `오류: ${e.message}`]);
+        }
+      }
+    }
+    log(`오늘 기록 정리 완료: ${total}건`, "success");
+    setStatus("done", `오늘 정리 완료 (${total}건)`);
+  } catch (e) {
+    log(`오류: ${e.message}`, "error");
+    setStatus("fail", "오류 발생");
+  }
+  showResults(results);
+  setButtons(false);
+}
+
+// --- 전체 실행 ---
+async function runAll() {
+  setButtons(true);
+  setStatus("running", "전체 실행 중...");
+  const results = [];
+  try {
+    log("=== 전체 실행 시작 ===");
+    const token = await login();
+    log("로그인 성공", "success");
+
+    // 1) 쿠폰 적용
+    log("--- 쿠폰 적용 ---");
+    for (const vehicle of vehicles) {
+      const va = await getVehicle(token, vehicle);
+      if (!va) { log(`${vehicle}: 미입차`, "warn"); results.push([vehicle, "미입차"]); continue; }
+      if (hasFreeCoupon(va)) { log(`${vehicle}: 이미 적용됨`, "info"); results.push([vehicle, "이미 적용됨"]); continue; }
+      const { nextCoupon, count } = await getNextCoupon(token);
+      if (!nextCoupon) { log(`${vehicle}: 쿠폰 없음`, "error"); results.push([vehicle, "쿠폰 없음"]); continue; }
+      await applyCoupon(token, va, nextCoupon);
+      log(`${vehicle}: 적용 완료 (잔여: ${count - 1})`, "success");
+      results.push([vehicle, "적용 완료"]);
+    }
+
+    // 2) 기록 정리
+    log("--- 기록 정리 ---");
+    const dates = getCleanupDates();
+    log(`대상 날짜: ${dates.join(", ")}`);
+    const c = cfg();
+    let total = 0;
+    for (const vehicle of vehicles) {
+      const data = await apiRequest("GET", `/vehicle-accesses?siteId=${c.site}&vehicle=${encodeURIComponent(vehicle)}&page=1&count=50`, token);
+      const targets = [];
+      for (const va of (data.vehicleAccesses || [])) {
+        if (va.status === "inParking") continue;
+        const created = parseDt(va.createdAt);
+        const createdKst = created.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+        if (!dates.includes(createdKst)) continue;
+        const entryAt = parseDt(va.entry.accessedAt);
+        if (Math.abs(created - entryAt) / 60000 >= 30) targets.push(va);
+      }
+      if (!targets.length) { log(`${vehicle}: 정리 대상 없음`); continue; }
+      for (const va of targets) {
+        try {
+          const info = await cleanupRecord(token, va);
+          results.push([vehicle, info]);
+          total++;
+        } catch (e) { log(`${vehicle} 오류: ${e.message}`, "error"); }
+      }
+    }
+
+    log(`=== 완료 (정리 ${total}건) ===`, "success");
+    setStatus("done", "전체 실행 완료");
+  } catch (e) {
+    log(`오류: ${e.message}`, "error");
+    setStatus("fail", "오류 발생");
+  }
+  showResults(results);
+  setButtons(false);
+}
+
+// --- 입차시간 변경 ---
+async function runChangeEntryTime() {
+  setButtons(true);
+  setStatus("running", "입차시간 변경 중...");
+  const results = [];
+  try {
+    const timeVal = document.getElementById("entryTimeInput").value;
+    if (!timeVal) { log("변경 시간을 입력하세요", "error"); setStatus("fail", "시간 미입력"); setButtons(false); return; }
+
+    // datetime-local은 이미 로컬(KST) → new Date()가 자동으로 UTC 변환
+    const localDate = new Date(timeVal);
+    const newEntryIso = toIso(localDate);
+
+    log(`입차시간 변경 시작 (변경할 시간: ${timeVal} KST)`);
+    const token = await login();
+    log("로그인 성공", "success");
+
+    for (const vehicle of vehicles) {
+      const va = await getVehicle(token, vehicle);
+      if (!va) { log(`${vehicle}: 입차 기록 없음 (미입차)`, "warn"); results.push([vehicle, "미입차"]); continue; }
+
+      const vaId = va._id;
+      const oldEntry = parseDt(va.entry.accessedAt);
+      const entryFac = va.entry.facility._id;
+
+      // 입차시간 변경 (entry.accessedAt + entry.facility 필수)
+      await apiRequest("PATCH", `/vehicle-accesses/${vaId}`, token, {
+        entry: { accessedAt: newEntryIso, facility: entryFac }
+      });
+
+      // 변경 확인
+      const updated = await getVehicle(token, vehicle);
+      const newEntry = updated ? parseDt(updated.entry.accessedAt) : utcDate;
+
+      const oldStr = kstStr(oldEntry);
+      const newStr = kstStr(newEntry);
+      log(`${vehicle}: 입차시간 ${oldStr} -> ${newStr}`, "success");
+      results.push([vehicle, `${oldStr} -> ${newStr}`]);
+    }
+    setStatus("done", "입차시간 변경 완료");
+  } catch (e) {
+    log(`오류: ${e.message}`, "error");
+    setStatus("fail", "오류 발생");
+  }
+  showResults(results);
+  setButtons(false);
+}
+
+// --- 결과 표시 ---
+function showResults(results) {
+  if (!results.length) return;
+  const body = document.getElementById("resultBody");
+  body.innerHTML = results.map(([v, r]) => `<tr><td>${v}</td><td>${r}</td></tr>`).join("");
+  document.getElementById("resultSummary").style.display = "block";
+}
+
+// 초기 렌더
+renderVehicles();
+initEntryTime();
+</script>
+</body>
+</html>
