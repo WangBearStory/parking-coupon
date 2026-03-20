@@ -1,0 +1,19 @@
+name: 입차시간 변경 알림
+
+on:
+  schedule:
+    # 매일 16:50 KST (07:50 UTC)
+    - cron: '50 7 * * *'
+  workflow_dispatch: # 수동 실행 가능
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node scripts/notify-entry-change.js
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}

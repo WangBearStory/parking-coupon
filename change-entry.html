@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>입차시간 변경</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; min-height: 100vh; display: flex; justify-content: center; align-items: center; }
+  .card { background: #16213e; border-radius: 12px; padding: 24px; max-width: 400px; width: 100%; text-align: center; }
+  h2 { color: #00d2ff; margin-bottom: 16px; font-size: 1.2em; }
+  .info { font-size: 0.95em; margin-bottom: 20px; line-height: 1.8; }
+  .info .label { color: #aaa; }
+  .info .value { color: #fff; font-weight: 600; }
+  .btn { padding: 14px 32px; border: none; border-radius: 8px; font-size: 1em; font-weight: 600; cursor: pointer; width: 100%; margin-top: 8px; }
+  .btn-primary { background: #00d2ff; color: #1a1a2e; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .result { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 0.9em; line-height: 1.6; display: none; }
+  .result.success { background: #1b3a2a; color: #66bb6a; }
+  .result.error { background: #3a1b1b; color: #ef5350; }
+  .result.nodata { background: #3a2e1b; color: #ffa726; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>입차시간 변경</h2>
+  <div class="info">
+    <div><span class="label">차량번호: </span><span class="value" id="vehicleDisplay">-</span></div>
+    <div><span class="label">변경 시간: </span><span class="value" id="timeDisplay">-</span></div>
+  </div>
+  <button class="btn btn-primary" id="btnChange" onclick="executeChange()">현재 시간으로 변경</button>
+  <div class="result" id="resultBox"></div>
+</div>
+
+<script>
+const API_URL = "https://dev-sni-admin.eyevacs.com";
+const LOGIN_ID = "alstn5632";
+const LOGIN_PW = "mirero2816!";
+const SITE_ID = "SBI_EYEVACS_0032";
+
+const params = new URLSearchParams(location.search);
+const vehicle = params.get("vehicle");
+
+if (!vehicle) {
+  document.querySelector(".card").innerHTML = '<h2 style="color:#ef5350;">차량번호가 지정되지 않았습니다</h2>';
+}
+
+document.getElementById("vehicleDisplay").textContent = vehicle || "-";
+
+function updateTime() {
+  const now = new Date();
+  const str = now.toLocaleString("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  document.getElementById("timeDisplay").textContent = str;
+}
+updateTime();
+setInterval(updateTime, 1000);
+
+async function apiRequest(method, path, token, body) {
+  const opts = { method, headers: { "Content-Type": "application/json" } };
+  if (token) opts.headers["Authorization"] = `Bearer ${token}`;
+  if (body) opts.body = JSON.stringify(body);
+  const resp = await fetch(API_URL + path, opts);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`HTTP ${resp.status}: ${text.substring(0, 200)}`);
+  }
+  return resp.json();
+}
+
+function toIso(dt) { return dt.toISOString().replace(/\.\d{3}Z$/, ".000Z"); }
+function kstStr(dt) {
+  return dt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+async function executeChange() {
+  const btn = document.getElementById("btnChange");
+  const resultBox = document.getElementById("resultBox");
+  btn.disabled = true;
+  btn.textContent = "변경 중...";
+  resultBox.style.display = "none";
+
+  try {
+    const now = new Date();
+    const newEntryIso = toIso(now);
+
+    const loginData = await apiRequest("POST", "/auth/token", null, { id: LOGIN_ID, password: LOGIN_PW });
+    const token = loginData.access_token;
+
+    const data = await apiRequest("GET",
+      `/vehicle-accesses?siteId=${SITE_ID}&vehicle=${encodeURIComponent(vehicle)}&status=inParking`, token);
+    const items = data.vehicleAccesses || [];
+
+    if (!items.length) {
+      resultBox.className = "result nodata";
+      resultBox.textContent = `${vehicle}: 현재 입차 기록이 없습니다 (미입차)`;
+      resultBox.style.display = "block";
+      btn.textContent = "현재 시간으로 변경";
+      btn.disabled = false;
+      return;
+    }
+
+    const va = items[0];
+    const oldEntry = new Date(va.entry.accessedAt);
+    const entryFac = va.entry.facility._id;
+
+    await apiRequest("PATCH", `/vehicle-accesses/${va._id}`, token, {
+      entry: { accessedAt: newEntryIso, facility: entryFac }
+    });
+
+    resultBox.className = "result success";
+    resultBox.innerHTML = `변경 완료<br>${kstStr(oldEntry)} → ${kstStr(now)}`;
+    resultBox.style.display = "block";
+    btn.textContent = "변경 완료";
+  } catch (e) {
+    resultBox.className = "result error";
+    resultBox.textContent = `오류: ${e.message}`;
+    resultBox.style.display = "block";
+    btn.textContent = "현재 시간으로 변경";
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>
