@@ -15,3 +15,5 @@ jobs:
         with:
           node-version: '20'
       - run: node scripts/apply-coupon.js
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
