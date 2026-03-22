@@ -2,8 +2,8 @@ name: 쿠폰 자동 적용
 
 on:
   schedule:
-    # 매일 08:30 KST (23:30 UTC 전날)
-    - cron: '30 23 * * *'
+    # 매일 08:17 KST (23:17 UTC 전날)
+    - cron: '17 23 * * *'
   workflow_dispatch: # 수동 실행 가능
 
 jobs:
