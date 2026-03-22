@@ -2,8 +2,8 @@ name: 오늘 주차기록 정리
 
 on:
   schedule:
-    # 매일 19:30 KST (10:30 UTC)
-    - cron: '30 10 * * *'
+    # 매일 19:07 KST (10:07 UTC)
+    - cron: '7 10 * * *'
   workflow_dispatch: # 수동 실행 가능
 
 jobs:
