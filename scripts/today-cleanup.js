@@ -15,7 +15,7 @@ const COUPON_DURATION = {
 };
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN || "";
-const SLACK_CHANNELS = ["D0ADWM544F7", "D0AD5RJ7JFM", "D0ADC7GSNM8"];
+const SLACK_USERS = ["U0AE6FTUWQ0", "U0ADA5TB3TQ", "U0AE046CVLJ"];
 
 async function apiRequest(method, path, token, body) {
   const opts = { method, headers: { "Content-Type": "application/json" } };
@@ -104,8 +104,22 @@ async function sendSlack(message) {
     console.log("SLACK_BOT_TOKEN 미설정 - 알림 생략");
     return;
   }
-  for (const channel of SLACK_CHANNELS) {
+  for (const userId of SLACK_USERS) {
     try {
+      const openResp = await fetch("https://slack.com/api/conversations.open", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SLACK_TOKEN}`
+        },
+        body: JSON.stringify({ users: userId })
+      });
+      const openData = await openResp.json();
+      if (!openData.ok) {
+        console.log(`Slack DM 열기 실패 (${userId}): ${openData.error}`);
+        continue;
+      }
+      const channel = openData.channel.id;
       const resp = await fetch("https://slack.com/api/chat.postMessage", {
         method: "POST",
         headers: {
@@ -115,9 +129,9 @@ async function sendSlack(message) {
         body: JSON.stringify({ channel, text: message })
       });
       const data = await resp.json();
-      if (!data.ok) console.log(`Slack 전송 실패 (${channel}): ${data.error}`);
+      if (!data.ok) console.log(`Slack 전송 실패 (${userId}): ${data.error}`);
     } catch (e) {
-      console.log(`Slack 전송 오류 (${channel}): ${e.message}`);
+      console.log(`Slack 전송 오류 (${userId}): ${e.message}`);
     }
   }
 }
