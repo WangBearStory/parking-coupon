@@ -7,6 +7,9 @@ on:
     - cron: '37 10 * * *'  # 오늘 주차기록 정리 +30m (19:37 KST)
   workflow_dispatch:
 
+permissions:
+  actions: write
+
 jobs:
   retry:
     runs-on: ubuntu-latest
