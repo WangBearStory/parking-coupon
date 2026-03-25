@@ -20,6 +20,7 @@ jobs:
         run: |
           REPO="${{ github.repository }}"
           TODAY=$(date -u +%Y-%m-%d)
+          HOUR=$(date -u +%H)
 
           check_and_retry() {
             local workflow=$1
@@ -35,6 +36,13 @@ jobs:
             fi
           }
 
-          check_and_retry "apply-coupon.yml" "쿠폰 자동 적용"
-          check_and_retry "notify-entry-change.yml" "입차시간 변경 알림"
-          check_and_retry "today-cleanup.yml" "오늘 주차기록 정리"
+          # 현재 UTC 시간대에 해당하는 워크플로우만 체크
+          # 23시대: 쿠폰 자동 적용 (원본 cron: 30 23)
+          # 07시대: 입차시간 변경 알림 (원본 cron: 50 7)
+          # 10시대: 오늘 주차기록 정리 (원본 cron: 30 10)
+          case "$HOUR" in
+            23|00) check_and_retry "apply-coupon.yml" "쿠폰 자동 적용" ;;
+            07|08) check_and_retry "notify-entry-change.yml" "입차시간 변경 알림" ;;
+            10|11) check_and_retry "today-cleanup.yml" "오늘 주차기록 정리" ;;
+            *)     echo "해당 시간대 워크플로우 없음 (UTC $HOUR시) -> 스킵" ;;
+          esac
