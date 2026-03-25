@@ -2,7 +2,11 @@ const API_URL = "https://dev-sni-admin.eyevacs.com";
 const LOGIN_ID = "alstn5632";
 const LOGIN_PW = "mirero2816!";
 const SITE_ID = "SBI_EYEVACS_0032";
-const VEHICLES = ["16마1011", "127조9937", "328서3376"];
+const VEHICLES = [
+  { plate: "16마1011", slackUser: "U0AE6FTUWQ0" },
+  { plate: "127조9937", slackUser: "U0ADA5TB3TQ" },
+  { plate: "328서3376", slackUser: "U0AE046CVLJ" },
+];
 
 const COUPON_DURATION = {
   "66860826a0b22bef3d9d9a5d": 1440,
@@ -15,7 +19,6 @@ const COUPON_DURATION = {
 };
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN || "";
-const SLACK_USERS = ["U0AE6FTUWQ0", "U0ADA5TB3TQ", "U0AE046CVLJ"];
 
 async function apiRequest(method, path, token, body) {
   const opts = { method, headers: { "Content-Type": "application/json" } };
@@ -99,40 +102,38 @@ async function cleanupRecord(token, va) {
   return info;
 }
 
-async function sendSlack(message) {
+async function sendSlackDM(userId, message) {
   if (!SLACK_TOKEN) {
     console.log("SLACK_BOT_TOKEN 미설정 - 알림 생략");
     return;
   }
-  for (const userId of SLACK_USERS) {
-    try {
-      const openResp = await fetch("https://slack.com/api/conversations.open", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${SLACK_TOKEN}`
-        },
-        body: JSON.stringify({ users: userId })
-      });
-      const openData = await openResp.json();
-      if (!openData.ok) {
-        console.log(`Slack DM 열기 실패 (${userId}): ${openData.error}`);
-        continue;
-      }
-      const channel = openData.channel.id;
-      const resp = await fetch("https://slack.com/api/chat.postMessage", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${SLACK_TOKEN}`
-        },
-        body: JSON.stringify({ channel, text: message })
-      });
-      const data = await resp.json();
-      if (!data.ok) console.log(`Slack 전송 실패 (${userId}): ${data.error}`);
-    } catch (e) {
-      console.log(`Slack 전송 오류 (${userId}): ${e.message}`);
+  try {
+    const openResp = await fetch("https://slack.com/api/conversations.open", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SLACK_TOKEN}`
+      },
+      body: JSON.stringify({ users: userId })
+    });
+    const openData = await openResp.json();
+    if (!openData.ok) {
+      console.log(`Slack DM 열기 실패 (${userId}): ${openData.error}`);
+      return;
     }
+    const channel = openData.channel.id;
+    const resp = await fetch("https://slack.com/api/chat.postMessage", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${SLACK_TOKEN}`
+      },
+      body: JSON.stringify({ channel, text: message })
+    });
+    const data = await resp.json();
+    if (!data.ok) console.log(`Slack 전송 실패 (${userId}): ${data.error}`);
+  } catch (e) {
+    console.log(`Slack 전송 오류 (${userId}): ${e.message}`);
   }
 }
 
@@ -144,12 +145,11 @@ async function main() {
   const today = getTodayKst();
   console.log(`정리 대상 날짜: ${today} (KST)`);
 
-  const cleaned = [];
   let total = 0;
 
-  for (const vehicle of VEHICLES) {
+  for (const { plate, slackUser } of VEHICLES) {
     const data = await apiRequest("GET",
-      `/vehicle-accesses?siteId=${SITE_ID}&vehicle=${encodeURIComponent(vehicle)}&page=1&count=50`, token);
+      `/vehicle-accesses?siteId=${SITE_ID}&vehicle=${encodeURIComponent(plate)}&page=1&count=50`, token);
 
     const targets = [];
     for (const va of (data.vehicleAccesses || [])) {
@@ -160,31 +160,32 @@ async function main() {
       const entryAt = parseDt(va.entry.accessedAt);
       const diffMin = Math.abs(created - entryAt) / 60000;
       if (diffMin >= 2) {
-        console.log(`  ${vehicle}: 정리 대상 (생성↔입차 ${Math.round(diffMin)}분)`);
+        console.log(`  ${plate}: 정리 대상 (생성↔입차 ${Math.round(diffMin)}분)`);
         targets.push(va);
       }
     }
 
     if (!targets.length) {
-      console.log(`${vehicle}: 정리 대상 없음`);
+      console.log(`${plate}: 정리 대상 없음`);
       continue;
     }
 
+    const cleaned = [];
     for (const va of targets) {
       try {
         const info = await cleanupRecord(token, va);
-        cleaned.push(`${va.vehicle}: ${info}`);
+        cleaned.push(info);
         total++;
       } catch (e) {
-        console.log(`${vehicle} 정리 오류: ${e.message}`);
+        console.log(`${plate} 정리 오류: ${e.message}`);
       }
     }
-  }
 
-  if (cleaned.length > 0) {
-    const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
-    const msg = `[주차 기록 정리] ${now}\n정리 완료 ${total}건:\n${cleaned.map(v => `- ${v}`).join("\n")}`;
-    await sendSlack(msg);
+    if (cleaned.length > 0) {
+      const now = new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" });
+      const msg = `[주차 기록 정리] ${now}\n${plate} 정리 완료 ${cleaned.length}건:\n${cleaned.map(v => `- ${v}`).join("\n")}`;
+      await sendSlackDM(slackUser, msg);
+    }
   }
 
   console.log(`=== 완료 (${total}건) ===`);
