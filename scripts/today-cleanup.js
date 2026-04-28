@@ -83,7 +83,7 @@ async function cleanupRecord(token, va) {
   let parkMin;
   if (couponMin > 0) { parkMin = couponMin - randInt(10, 20); }
   else { parkMin = randInt(20, 25); }
-  let newExit = new Date(newEntry.getTime() + parkMin * 60000);
+  let newExit = new Date(newEntry.getTime() + (parkMin * 60 + randInt(0, 59)) * 1000);
 
   const entryUtcDate = newEntry.toISOString().slice(0, 10);
   const exitUtcDate = newExit.toISOString().slice(0, 10);
