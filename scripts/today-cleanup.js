@@ -72,7 +72,9 @@ async function cleanupRecord(token, va) {
   const entryFac = va.entry.facility._id;
   const exitFac = va.exit && va.exit.facility ? va.exit.facility._id : entryFac.replace("entrance", "exit");
 
-  const newEntry = new Date(created.getTime() - randInt(1, 5) * 1000);
+  const createdSec = Math.floor(created.getTime() / 1000);
+  const offsetSec = [0, 0, 0, 1, 1, -1][randInt(0, 5)];
+  const newEntry = new Date((createdSec + offsetSec) * 1000);
   await apiRequest("PATCH", `/vehicle-accesses/${vaId}`, token, {
     entry: { accessedAt: toIso(newEntry), facility: entryFac }
   });
