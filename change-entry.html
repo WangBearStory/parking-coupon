@@ -100,6 +100,36 @@ async function patchEntryTime(token, va, nowIso) {
   });
 }
 
+// ========================================
+// 쿠폰 헬퍼
+// ========================================
+function hasFreeCoupon(va) {
+  const coupons = (va.payment || {}).discountCouponList || [];
+  return coupons.some(cp => {
+    const key = cp.discountCouponKey || {};
+    return typeof key === "object" && (key.name || "").includes("방문자확인");
+  });
+}
+
+async function getNextCoupon(token) {
+  const data = await apiRequest("GET",
+    `/discount-coupon-keys/coupon?owner=${OWNER_ID}&ownerModel=Admin`, token);
+  for (const key of (data.discountCouponKeys || [])) {
+    if (key._id === COUPON_KEY_2H) return { nextCoupon: key.nextCoupon, count: key.count || 0 };
+  }
+  return { nextCoupon: null, count: 0 };
+}
+
+async function applyCoupon(token, va, couponId) {
+  let detail = await apiRequest("GET", `/vehicle-accesses/${va._id}`, token);
+  if (detail.vehicleAccess) detail = detail.vehicleAccess;
+  const existing = ((detail.payment || {}).discountCouponList || []).map(cp => cp._id);
+  existing.push(couponId);
+  await apiRequest("PATCH", `/vehicle-accesses/${va._id}`, token, {
+    payment: { discountCouponList: existing }
+  });
+}
+
 async function executeChange() {
   const btn = document.getElementById("btnChange");
   const resultBox = document.getElementById("resultBox");
