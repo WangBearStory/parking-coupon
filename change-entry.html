@@ -72,6 +72,34 @@ function kstStr(dt) {
   return dt.toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
+// ========================================
+// 공통 API 헬퍼
+// ========================================
+const OWNER_ID = "66a9c4f0c920064e4a47abc9";
+const COUPON_KEY_2H = "6690e5b8ebc44ff5ad8a1713";
+
+let _cachedToken = null;
+async function loadToken() {
+  if (_cachedToken) return _cachedToken;
+  const data = await apiRequest("POST", "/auth/token", null, { id: LOGIN_ID, password: LOGIN_PW });
+  _cachedToken = data.access_token;
+  return _cachedToken;
+}
+
+async function getVehicleByStatus(token, status) {
+  const data = await apiRequest("GET",
+    `/vehicle-accesses?siteId=${SITE_ID}&vehicle=${encodeURIComponent(vehicle)}&status=${status}`, token);
+  const items = data.vehicleAccesses || [];
+  return items.length ? items[0] : null;
+}
+
+async function patchEntryTime(token, va, nowIso) {
+  const facility = va.entry.facility._id;
+  await apiRequest("PATCH", `/vehicle-accesses/${va._id}`, token, {
+    entry: { accessedAt: nowIso, facility }
+  });
+}
+
 async function executeChange() {
   const btn = document.getElementById("btnChange");
   const resultBox = document.getElementById("resultBox");
@@ -82,15 +110,10 @@ async function executeChange() {
   try {
     const now = new Date();
     const newEntryIso = toIso(now);
+    const token = await loadToken();
+    const va = await getVehicleByStatus(token, "inParking");
 
-    const loginData = await apiRequest("POST", "/auth/token", null, { id: LOGIN_ID, password: LOGIN_PW });
-    const token = loginData.access_token;
-
-    const data = await apiRequest("GET",
-      `/vehicle-accesses?siteId=${SITE_ID}&vehicle=${encodeURIComponent(vehicle)}&status=inParking`, token);
-    const items = data.vehicleAccesses || [];
-
-    if (!items.length) {
+    if (!va) {
       resultBox.className = "result nodata";
       resultBox.textContent = `${vehicle}: 현재 입차 기록이 없습니다 (미입차)`;
       resultBox.style.display = "block";
@@ -99,13 +122,8 @@ async function executeChange() {
       return;
     }
 
-    const va = items[0];
     const oldEntry = new Date(va.entry.accessedAt);
-    const entryFac = va.entry.facility._id;
-
-    await apiRequest("PATCH", `/vehicle-accesses/${va._id}`, token, {
-      entry: { accessedAt: newEntryIso, facility: entryFac }
-    });
+    await patchEntryTime(token, va, newEntryIso);
 
     resultBox.className = "result success";
     resultBox.innerHTML = `변경 완료<br>${kstStr(oldEntry)} → ${kstStr(now)}`;
