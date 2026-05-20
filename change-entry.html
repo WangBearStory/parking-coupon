@@ -109,6 +109,12 @@ async function patchEntryTime(token, va, nowIso) {
   });
 }
 
+// 입차시간을 현재 시각 6~10분 전으로 랜덤 보정 (쿠폰 applyAt 과의 자연스러운 시간차 확보)
+function pickEntryTime() {
+  const offsetMs = (6 + Math.random() * 4) * 60 * 1000;
+  return new Date(Date.now() - offsetMs);
+}
+
 // ========================================
 // 쿠폰 헬퍼
 // ========================================
@@ -184,10 +190,10 @@ async function onChangeOnly() {
       reEnableAllButtons();
       return;
     }
-    const now = new Date();
+    const newEntry = pickEntryTime();
     const oldEntry = new Date(va.entry.accessedAt);
-    await patchEntryTime(token, va, toIso(now));
-    showResult("success", `변경 완료<br>${kstStr(oldEntry)} → ${kstStr(now)}`);
+    await patchEntryTime(token, va, toIso(newEntry));
+    showResult("success", `변경 완료<br>${kstStr(oldEntry)} → ${kstStr(newEntry)}`);
     document.getElementById("btnChange").textContent = "변경 완료";
   } catch (e) {
     showResult("error", `오류: ${e.message}`);
@@ -208,10 +214,10 @@ async function onBoth() {
     }
 
     // 1) 입차시간 변경
-    const now = new Date();
+    const newEntry = pickEntryTime();
     const oldEntry = new Date(va.entry.accessedAt);
-    await patchEntryTime(token, va, toIso(now));
-    const timeChangeMsg = `${kstStr(oldEntry)} → ${kstStr(now)}`;
+    await patchEntryTime(token, va, toIso(newEntry));
+    const timeChangeMsg = `${kstStr(oldEntry)} → ${kstStr(newEntry)}`;
 
     // 2) 쿠폰 흐름
     if (hasFreeCoupon(va)) {
@@ -276,10 +282,10 @@ async function onPostPaidChange() {
       reEnableAllButtons();
       return;
     }
-    const now = new Date();
+    const newEntry = pickEntryTime();
     const oldEntry = new Date(va.entry.accessedAt);
-    await patchEntryTime(token, va, toIso(now));
-    showResult("success", `정산 대기 차량 변경 완료<br>${kstStr(oldEntry)} → ${kstStr(now)}`);
+    await patchEntryTime(token, va, toIso(newEntry));
+    showResult("success", `정산 대기 차량 변경 완료<br>${kstStr(oldEntry)} → ${kstStr(newEntry)}`);
     document.getElementById("btnPostPaid").textContent = "변경 완료";
   } catch (e) {
     showResult("error", `오류: ${e.message}`);
