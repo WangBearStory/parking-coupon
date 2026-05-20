@@ -15,6 +15,11 @@
   .btn { padding: 14px 32px; border: none; border-radius: 8px; font-size: 1em; font-weight: 600; cursor: pointer; width: 100%; margin-top: 8px; }
   .btn-primary { background: #00d2ff; color: #1a1a2e; }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-outline { background: transparent; color: #00d2ff; border: 2px solid #00d2ff; }
+  .btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-warning { background: #ffa726; color: #1a1a2e; }
+  .btn-warning:disabled { opacity: 0.5; cursor: not-allowed; }
+  .divider { border: 0; border-top: 1px solid #2a3a5a; margin: 16px 0 8px 0; }
   .result { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 0.9em; line-height: 1.6; display: none; }
   .result.success { background: #1b3a2a; color: #66bb6a; }
   .result.error { background: #3a1b1b; color: #ef5350; }
@@ -28,7 +33,11 @@
     <div><span class="label">차량번호: </span><span class="value" id="vehicleDisplay">-</span></div>
     <div><span class="label">변경 시간: </span><span class="value" id="timeDisplay">-</span></div>
   </div>
-  <button class="btn btn-primary" id="btnChange" onclick="executeChange()">현재 시간으로 변경</button>
+  <button class="btn btn-primary" id="btnBoth" onclick="onBoth()">쿠폰 + 입차시간 변경</button>
+  <button class="btn btn-outline" id="btnChange" onclick="onChangeOnly()">현재 시간으로 변경</button>
+  <button class="btn btn-outline" id="btnCoupon" onclick="onCouponOnly()">2시간 무료 쿠폰 적용</button>
+  <hr class="divider">
+  <button class="btn btn-warning" id="btnPostPaid" onclick="onPostPaidChange()">정산 직전 입차시간 변경</button>
   <div class="result" id="resultBox"></div>
 </div>
 
@@ -130,7 +139,7 @@ async function applyCoupon(token, va, couponId) {
   });
 }
 
-async function executeChange() {
+async function onChangeOnly() {
   const btn = document.getElementById("btnChange");
   const resultBox = document.getElementById("resultBox");
   btn.disabled = true;
@@ -166,6 +175,16 @@ async function executeChange() {
     btn.textContent = "현재 시간으로 변경";
     btn.disabled = false;
   }
+}
+
+async function onBoth() {
+  alert("미구현 — Task 4에서 채워짐");
+}
+async function onCouponOnly() {
+  alert("미구현 — Task 4에서 채워짐");
+}
+async function onPostPaidChange() {
+  alert("미구현 — Task 4에서 채워짐");
 }
 </script>
 </body>
