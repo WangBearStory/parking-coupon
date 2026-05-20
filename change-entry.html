@@ -139,52 +139,152 @@ async function applyCoupon(token, va, couponId) {
   });
 }
 
-async function onChangeOnly() {
-  const btn = document.getElementById("btnChange");
-  const resultBox = document.getElementById("resultBox");
-  btn.disabled = true;
-  btn.textContent = "변경 중...";
-  resultBox.style.display = "none";
+// ========================================
+// UX 헬퍼
+// ========================================
+const ALL_BTNS = ["btnBoth", "btnChange", "btnCoupon", "btnPostPaid"];
+const BTN_LABELS = {
+  btnBoth: "쿠폰 + 입차시간 변경",
+  btnChange: "현재 시간으로 변경",
+  btnCoupon: "2시간 무료 쿠폰 적용",
+  btnPostPaid: "정산 직전 입차시간 변경"
+};
 
+function disableAllButtons(activeId, busyText) {
+  for (const id of ALL_BTNS) {
+    const el = document.getElementById(id);
+    el.disabled = true;
+    if (id === activeId) el.textContent = busyText;
+  }
+}
+
+function reEnableAllButtons() {
+  for (const id of ALL_BTNS) {
+    const el = document.getElementById(id);
+    el.disabled = false;
+    el.textContent = BTN_LABELS[id];
+  }
+}
+
+function showResult(cls, html) {
+  const box = document.getElementById("resultBox");
+  box.className = `result ${cls}`;
+  box.innerHTML = html;
+  box.style.display = "block";
+}
+
+async function onChangeOnly() {
+  document.getElementById("resultBox").style.display = "none";
+  disableAllButtons("btnChange", "변경 중...");
   try {
-    const now = new Date();
-    const newEntryIso = toIso(now);
     const token = await loadToken();
     const va = await getVehicleByStatus(token, "inParking");
-
     if (!va) {
-      resultBox.className = "result nodata";
-      resultBox.textContent = `${vehicle}: 현재 입차 기록이 없습니다 (미입차)`;
-      resultBox.style.display = "block";
-      btn.textContent = "현재 시간으로 변경";
-      btn.disabled = false;
+      showResult("nodata", `${vehicle}: 현재 입차 기록이 없습니다 (미입차)`);
+      reEnableAllButtons();
       return;
     }
-
+    const now = new Date();
     const oldEntry = new Date(va.entry.accessedAt);
-    await patchEntryTime(token, va, newEntryIso);
-
-    resultBox.className = "result success";
-    resultBox.innerHTML = `변경 완료<br>${kstStr(oldEntry)} → ${kstStr(now)}`;
-    resultBox.style.display = "block";
-    btn.textContent = "변경 완료";
+    await patchEntryTime(token, va, toIso(now));
+    showResult("success", `변경 완료<br>${kstStr(oldEntry)} → ${kstStr(now)}`);
+    document.getElementById("btnChange").textContent = "변경 완료";
   } catch (e) {
-    resultBox.className = "result error";
-    resultBox.textContent = `오류: ${e.message}`;
-    resultBox.style.display = "block";
-    btn.textContent = "현재 시간으로 변경";
-    btn.disabled = false;
+    showResult("error", `오류: ${e.message}`);
+    reEnableAllButtons();
   }
 }
 
 async function onBoth() {
-  alert("미구현 — Task 4에서 채워짐");
+  document.getElementById("resultBox").style.display = "none";
+  disableAllButtons("btnBoth", "처리 중...");
+  try {
+    const token = await loadToken();
+    const va = await getVehicleByStatus(token, "inParking");
+    if (!va) {
+      showResult("nodata", `${vehicle}: 현재 입차 기록이 없습니다 (미입차)`);
+      reEnableAllButtons();
+      return;
+    }
+
+    // 1) 입차시간 변경
+    const now = new Date();
+    const oldEntry = new Date(va.entry.accessedAt);
+    await patchEntryTime(token, va, toIso(now));
+    const timeChangeMsg = `${kstStr(oldEntry)} → ${kstStr(now)}`;
+
+    // 2) 쿠폰 흐름
+    if (hasFreeCoupon(va)) {
+      showResult("success", `변경 완료 (쿠폰 기적용)<br>${timeChangeMsg}`);
+      document.getElementById("btnBoth").textContent = "변경 완료";
+      return;
+    }
+    const { nextCoupon, count } = await getNextCoupon(token);
+    if (!nextCoupon) {
+      showResult("success", `변경 완료 + 쿠폰 잔여 없음<br>${timeChangeMsg}`);
+      document.getElementById("btnBoth").textContent = "변경 완료";
+      return;
+    }
+    await applyCoupon(token, va, nextCoupon);
+    showResult("success", `변경 완료 + 쿠폰 적용 완료 (잔여 ${count - 1})<br>${timeChangeMsg}`);
+    document.getElementById("btnBoth").textContent = "변경 완료";
+  } catch (e) {
+    showResult("error", `오류: ${e.message}`);
+    reEnableAllButtons();
+  }
 }
+
 async function onCouponOnly() {
-  alert("미구현 — Task 4에서 채워짐");
+  document.getElementById("resultBox").style.display = "none";
+  disableAllButtons("btnCoupon", "쿠폰 적용 중...");
+  try {
+    const token = await loadToken();
+    const va = await getVehicleByStatus(token, "inParking");
+    if (!va) {
+      showResult("nodata", `${vehicle}: 현재 입차 기록이 없습니다 (미입차)`);
+      reEnableAllButtons();
+      return;
+    }
+    if (hasFreeCoupon(va)) {
+      showResult("nodata", `${vehicle}: 이미 2시간 무료 쿠폰 적용됨`);
+      reEnableAllButtons();
+      return;
+    }
+    const { nextCoupon, count } = await getNextCoupon(token);
+    if (!nextCoupon) {
+      showResult("nodata", `2시간 무료 쿠폰 잔여 없음 (보유 ${count}건)`);
+      reEnableAllButtons();
+      return;
+    }
+    await applyCoupon(token, va, nextCoupon);
+    showResult("success", `2시간 무료 쿠폰 적용 완료 (잔여 ${count - 1})`);
+    document.getElementById("btnCoupon").textContent = "쿠폰 적용 완료";
+  } catch (e) {
+    showResult("error", `오류: ${e.message}`);
+    reEnableAllButtons();
+  }
 }
+
 async function onPostPaidChange() {
-  alert("미구현 — Task 4에서 채워짐");
+  document.getElementById("resultBox").style.display = "none";
+  disableAllButtons("btnPostPaid", "변경 중...");
+  try {
+    const token = await loadToken();
+    const va = await getVehicleByStatus(token, "postPaid");
+    if (!va) {
+      showResult("nodata", `${vehicle}: 정산 대기 중인 차량이 없습니다`);
+      reEnableAllButtons();
+      return;
+    }
+    const now = new Date();
+    const oldEntry = new Date(va.entry.accessedAt);
+    await patchEntryTime(token, va, toIso(now));
+    showResult("success", `정산 대기 차량 변경 완료<br>${kstStr(oldEntry)} → ${kstStr(now)}`);
+    document.getElementById("btnPostPaid").textContent = "변경 완료";
+  } catch (e) {
+    showResult("error", `오류: ${e.message}`);
+    reEnableAllButtons();
+  }
 }
 </script>
 </body>
