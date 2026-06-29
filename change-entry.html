@@ -102,6 +102,17 @@ async function getVehicleByStatus(token, status) {
   return items.length ? items[0] : null;
 }
 
+// 입차시간 변경이 가능한 활성 상태 (정산 기계 근처 단계 포함)
+const ACTIVE_STATUSES = ["inParking", "inExit", "prePaid", "postPaid", "postpayReserved"];
+
+// 상태 필터 없이 가장 최근 기록 1건을 가져온다 (정산 기계 갔다 후진 등 상태가 무엇이든 대응)
+async function getLatestVehicle(token) {
+  const data = await apiRequest("GET",
+    `/vehicle-accesses?siteId=${SITE_ID}&vehicle=${encodeURIComponent(vehicle)}&page=1&count=5`, token);
+  const items = data.vehicleAccesses || [];
+  return items.length ? items[0] : null;
+}
+
 async function patchEntryTime(token, va, nowIso) {
   const facility = va.entry.facility._id;
   await apiRequest("PATCH", `/vehicle-accesses/${va._id}`, token, {
@@ -287,16 +298,21 @@ async function onPostPaidChange() {
   disableAllButtons("btnPostPaid", "변경 중...");
   try {
     const token = await loadToken();
-    const va = await getVehicleByStatus(token, "postPaid");
+    const va = await getLatestVehicle(token);
     if (!va) {
-      showResult("nodata", `${vehicle}: 정산 대기 중인 차량이 없습니다`);
+      showResult("nodata", `${vehicle}: 기록이 없습니다`);
+      reEnableAllButtons();
+      return;
+    }
+    if (!ACTIVE_STATUSES.includes(va.status)) {
+      showResult("nodata", `${vehicle}: 이미 출차 완료된 차량입니다 (status: ${va.status})`);
       reEnableAllButtons();
       return;
     }
     const newEntry = pickEntryTime();
     const oldEntry = new Date(va.entry.accessedAt);
     await patchEntryTime(token, va, toIso(newEntry));
-    showResult("success", `정산 대기 차량 변경 완료<br>${kstStr(oldEntry)} → ${kstStr(newEntry)}`);
+    showResult("success", `변경 완료 (${va.status})<br>${kstStr(oldEntry)} → ${kstStr(newEntry)}`);
     document.getElementById("btnPostPaid").textContent = "변경 완료";
   } catch (e) {
     showResult("error", `오류: ${e.message}`);
