@@ -1,9 +1,9 @@
-name: 입차시간 변경 알림
+name: 입차시간 자동 변경 + 쿠폰 적용
 
 on:
   schedule:
-    # 매일 15:50 KST (06:50 UTC)
-    - cron: '50 6 * * *'
+    # 매일 15:30 KST (06:30 UTC)
+    - cron: '30 6 * * *'
   workflow_dispatch: # 수동 실행 가능
 
 jobs:

@@ -2,7 +2,7 @@ name: 스케줄 스킵 재실행
 
 on:
   schedule:
-    - cron: '23 7 * * *'   # 입차시간 변경 알림 +10m (16:23 KST)
+    - cron: '23 7 * * *'   # 입차시간 자동 변경 누락 시 재실행 (16:23 KST)
   workflow_dispatch:
 
 permissions:
@@ -35,8 +35,8 @@ jobs:
           }
 
           # 현재 UTC 시간대에 해당하는 워크플로우만 체크
-          # 07시대: 입차시간 변경 알림 (원본 cron: 50 7)
+          # 07시대: 입차시간 자동 변경 + 쿠폰 적용 (원본 cron: 0 7)
           case "$HOUR" in
-            07|08) check_and_retry "notify-entry-change.yml" "입차시간 변경 알림" ;;
+            07|08) check_and_retry "notify-entry-change.yml" "입차시간 자동 변경" ;;
             *)     echo "해당 시간대 워크플로우 없음 (UTC $HOUR시) -> 스킵" ;;
           esac
