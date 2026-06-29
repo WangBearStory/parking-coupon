@@ -145,6 +145,18 @@ async function applyCoupon(token, va, couponId) {
   });
 }
 
+// 적용된 2시간 무료(방문자확인) 쿠폰만 해제 (다른 쿠폰은 유지)
+async function removeFreeCoupons(token, vaId) {
+  let detail = await apiRequest("GET", `/vehicle-accesses/${vaId}`, token);
+  if (detail.vehicleAccess) detail = detail.vehicleAccess;
+  const kept = ((detail.payment || {}).discountCouponList || [])
+    .filter(cp => !((cp.discountCouponKey || {}).name || "").includes("방문자확인"))
+    .map(cp => cp._id);
+  await apiRequest("PATCH", `/vehicle-accesses/${vaId}`, token, {
+    payment: { discountCouponList: kept }
+  });
+}
+
 // ========================================
 // UX 헬퍼
 // ========================================
@@ -219,12 +231,10 @@ async function onBoth() {
     await patchEntryTime(token, va, toIso(newEntry));
     const timeChangeMsg = `${kstStr(oldEntry)} → ${kstStr(newEntry)}`;
 
-    // 2) 쿠폰 흐름
-    if (hasFreeCoupon(va)) {
-      showResult("success", `변경 완료 (쿠폰 기적용)<br>${timeChangeMsg}`);
-      document.getElementById("btnBoth").textContent = "변경 완료";
-      return;
-    }
+    // 2) 쿠폰 흐름: 이미 적용돼 있으면 해제 후 재등록, 없으면 신규 등록
+    const wasApplied = hasFreeCoupon(va);
+    if (wasApplied) await removeFreeCoupons(token, va._id);
+
     const { nextCoupon, count } = await getNextCoupon(token);
     if (!nextCoupon) {
       showResult("success", `변경 완료 + 쿠폰 잔여 없음<br>${timeChangeMsg}`);
@@ -232,7 +242,8 @@ async function onBoth() {
       return;
     }
     await applyCoupon(token, va, nextCoupon);
-    showResult("success", `변경 완료 + 쿠폰 적용 완료 (잔여 ${count - 1})<br>${timeChangeMsg}`);
+    const couponLabel = wasApplied ? "쿠폰 재등록 완료" : "쿠폰 적용 완료";
+    showResult("success", `변경 완료 + ${couponLabel} (잔여 ${count - 1})<br>${timeChangeMsg}`);
     document.getElementById("btnBoth").textContent = "변경 완료";
   } catch (e) {
     showResult("error", `오류: ${e.message}`);
