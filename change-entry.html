@@ -108,12 +108,14 @@ function isTodayKst(iso) {
   return ymd(new Date(iso)) === ymd(new Date());
 }
 
-// 오늘(KST) 입차(createdAt 기준)한 기록을 찾는다. 상태 무관, 여러 건이면 가장 최근 것
+// 오늘(KST) 입차(createdAt 기준)한 기록 중 가장 최근 것을 찾는다 (하루 여러 입출차 사이클 대비). 상태 무관
 async function getTodayVehicle(token) {
   const data = await apiRequest("GET",
     `/vehicle-accesses?siteId=${SITE_ID}&vehicle=${encodeURIComponent(vehicle)}&page=1&count=10`, token);
-  const items = data.vehicleAccesses || [];
-  return items.find(va => isTodayKst(va.createdAt)) || null;
+  const today = (data.vehicleAccesses || []).filter(va => isTodayKst(va.createdAt));
+  if (!today.length) return null;
+  today.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return today[0];
 }
 
 async function patchEntryTime(token, va, nowIso) {
