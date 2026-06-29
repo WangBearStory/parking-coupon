@@ -85,6 +85,18 @@ async function applyCoupon(token, va, couponId) {
   });
 }
 
+// 적용된 2시간무료(방문자확인) 쿠폰만 해제 (다른 쿠폰은 유지)
+async function removeFreeCoupons(token, vaId) {
+  let detail = await apiRequest("GET", `/vehicle-accesses/${vaId}`, token);
+  if (detail.vehicleAccess) detail = detail.vehicleAccess;
+  const kept = ((detail.payment || {}).discountCouponList || [])
+    .filter(cp => !((cp.discountCouponKey || {}).name || "").includes("방문자확인"))
+    .map(cp => cp._id);
+  await apiRequest("PATCH", `/vehicle-accesses/${vaId}`, token, {
+    payment: { discountCouponList: kept }
+  });
+}
+
 async function sendSlack(channel, text) {
   if (!SLACK_TOKEN) {
     console.log("SLACK_BOT_TOKEN 미설정 - 알림 생략");
@@ -115,17 +127,19 @@ async function processVehicle(token, vehicle) {
   const newEntry = pickEntryTime();
   await patchEntryTime(token, va, toIso(newEntry));
 
+  // 쿠폰: 이미 적용돼 있으면 해제 후 재등록, 없으면 신규 등록
+  const wasApplied = hasFreeCoupon(va);
+  if (wasApplied) await removeFreeCoupons(token, va._id);
+
   let couponMsg;
-  if (hasFreeCoupon(va)) {
-    couponMsg = "2시간무료 쿠폰은 이미 적용되어 있습니다.";
+  const { nextCoupon, count } = await getNextCoupon(token);
+  if (!nextCoupon) {
+    couponMsg = "2시간무료 쿠폰 잔여가 없어 시간만 변경했습니다.";
   } else {
-    const { nextCoupon, count } = await getNextCoupon(token);
-    if (!nextCoupon) {
-      couponMsg = "2시간무료 쿠폰 잔여가 없어 시간만 변경했습니다.";
-    } else {
-      await applyCoupon(token, va, nextCoupon);
-      couponMsg = `2시간무료 쿠폰이 적용되었습니다. (잔여 ${count - 1})`;
-    }
+    await applyCoupon(token, va, nextCoupon);
+    couponMsg = wasApplied
+      ? `2시간무료 쿠폰이 재등록되었습니다. (잔여 ${count - 1})`
+      : `2시간무료 쿠폰이 적용되었습니다. (잔여 ${count - 1})`;
   }
 
   return { status: "done", newEntry, couponMsg };
