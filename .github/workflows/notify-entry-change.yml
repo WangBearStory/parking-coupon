@@ -2,8 +2,8 @@ name: 입차시간 자동 변경 + 쿠폰 적용
 
 on:
   schedule:
-    # cron 04:00 UTC(=13:00 KST). GitHub 스케줄 지연 2.5~3.5h 감안하여 실제 15~17시 KST 실행 목표
-    - cron: '0 4 * * *'
+    # cron 03:30 UTC(=12:30 KST). GitHub 스케줄 지연 2.5~3.5h 감안하여 실제 15~16시 KST 실행 목표
+    - cron: '30 3 * * *'
   workflow_dispatch: # 수동 실행 가능
 
 jobs:
