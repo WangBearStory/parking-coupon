@@ -35,7 +35,7 @@ jobs:
           }
 
           # 현재 UTC 시간대에 해당하는 워크플로우만 체크
-          # 07시대: 입차시간 자동 변경 + 쿠폰 적용 (원본 cron: 0 7)
+          # 07시대: 입차시간 자동 변경 + 쿠폰 적용 (원본 cron: 5,35 5-7 / 5 8)
           case "$HOUR" in
             07|08) check_and_retry "notify-entry-change.yml" "입차시간 자동 변경" ;;
             *)     echo "해당 시간대 워크플로우 없음 (UTC $HOUR시) -> 스킵" ;;

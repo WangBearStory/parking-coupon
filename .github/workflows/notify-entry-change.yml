@@ -2,9 +2,19 @@ name: 입차시간 자동 변경 + 쿠폰 적용
 
 on:
   schedule:
-    # cron 04:50 UTC(=13:50 KST). GitHub 스케줄 지연 ~4h 감안, 실제 15:50~18:20 KST 창 목표
-    - cron: '50 4 * * *'
+    # KST 14:05~17:05, 30분 간격 (UTC 05:05~08:05)
+    # 실행 시점의 실제 KST 시각을 스크립트가 다시 판정한다.
+    #   - 15시 이전: 상태 확인만 하고 이벤트 미실행
+    #   - 15시 이후: 오늘 미처리 차량만 실행 (이미 처리됐으면 스킵)
+    # 분을 05/35로 둔 것은 정시(:00)에 몰리는 GitHub 스케줄 지연을 줄이기 위함
+    - cron: '5,35 5-7 * * *'
+    - cron: '5 8 * * *'
   workflow_dispatch: # 수동 실행 가능
+    inputs:
+      force:
+        description: '15시 제한/중복 처리 확인을 무시하고 강제 실행'
+        type: boolean
+        default: false
 
 jobs:
   notify:
@@ -17,3 +27,4 @@ jobs:
       - run: node scripts/notify-entry-change.js
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          FORCE_RUN: ${{ inputs.force }}
