@@ -12,8 +12,9 @@ const FORCE_RUN = String(process.env.FORCE_RUN || "").toLowerCase() === "true";
 
 // 이벤트 실행 가능 시각(KST). 이 시각 전에는 확인만 하고 실행하지 않는다.
 const WINDOW_START_HOUR = 15;
-// 입차시간이 오늘 이 시각(KST) 이후로 잡혀 있고 무료쿠폰까지 붙어 있으면 오늘 이벤트가 이미 실행된 것으로 본다.
-const DONE_THRESHOLD_HOUR = 14;
+// 입차시간이 오늘 이 시각(KST, 분 단위) 이후로 잡혀 있고 무료쿠폰까지 붙어 있으면 오늘 이벤트가 이미 실행된 것으로 본다.
+// 이벤트는 15시 이후에만 실행되고 입차시간을 현재-6~10분으로 잡으므로 실행 결과는 항상 14:50 이후가 된다.
+const DONE_THRESHOLD_MINUTES = 14 * 60 + 45;
 
 // 사용자별 차량 매핑
 const CHANNEL_VEHICLES = [
@@ -78,14 +79,14 @@ function hasFreeCoupon(va) {
   });
 }
 
-// 오늘 이벤트가 이미 실행됐는지 판정: 입차시간이 오늘 14시 이후로 당겨져 있고 무료쿠폰이 붙어 있으면 처리 완료
+// 오늘 이벤트가 이미 실행됐는지 판정: 입차시간이 오늘 14:45 이후로 당겨져 있고 무료쿠폰이 붙어 있으면 처리 완료
 function isProcessedToday(va) {
   const accessedAt = ((va.entry || {}).accessedAt) || null;
   if (!accessedAt) return false;
   const now = kstParts();
   const a = kstParts(new Date(accessedAt));
   const sameDay = a.y === now.y && a.m === now.m && a.d === now.d;
-  return sameDay && a.hour >= DONE_THRESHOLD_HOUR && hasFreeCoupon(va);
+  return sameDay && a.hour * 60 + a.minute >= DONE_THRESHOLD_MINUTES && hasFreeCoupon(va);
 }
 
 async function getNextCoupon(token) {
