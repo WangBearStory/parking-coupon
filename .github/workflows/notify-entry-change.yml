@@ -2,13 +2,8 @@ name: 입차시간 자동 변경 + 쿠폰 적용
 
 on:
   schedule:
-    # KST 14:05~17:05, 30분 간격 (UTC 05:05~08:05)
-    # 실행 시점의 실제 KST 시각을 스크립트가 다시 판정한다.
-    #   - 15시 이전: 상태 확인만 하고 이벤트 미실행
-    #   - 15시 이후: 오늘 미처리 차량만 실행 (이미 처리됐으면 스킵)
-    # 분을 05/35로 둔 것은 정시(:00)에 몰리는 GitHub 스케줄 지연을 줄이기 위함
-    - cron: '5,35 5-7 * * *'
-    - cron: '5 8 * * *'
+    # UTC 01:07~07:07 매시. 잡이 UTC 06:00까지 대기하므로 이른 슬롯 하나만 배달돼도 KST 15시에 처리된다.
+    - cron: '7 1-7 * * *'
   workflow_dispatch: # 수동 실행 가능
     inputs:
       force:
@@ -16,14 +11,30 @@ on:
         type: boolean
         default: false
 
+# 대기 중인 잡이 동시에 깨어나 중복 처리하지 않도록 직렬화한다. 수동 실행은 대기 잡 뒤에 밀리지 않게 그룹을 분리한다.
+concurrency:
+  group: notify-entry-change-${{ github.event_name }}
+  cancel-in-progress: false
+
 jobs:
   notify:
     runs-on: ubuntu-latest
+    timeout-minutes: 330 # 최대 대기 4시간 53분, GitHub 잡 상한 6시간
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: KST 15시까지 대기
+        if: github.event_name == 'schedule'
+        run: |
+          WAIT=$(( $(date -u -d 'today 06:00' +%s) - $(date -u +%s) ))
+          if [ "$WAIT" -gt 0 ]; then
+            echo "KST 15:00까지 ${WAIT}초 대기"
+            sleep "$WAIT"
+          else
+            echo "KST 15:00 경과, 즉시 실행"
+          fi
       - run: node scripts/notify-entry-change.js
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
