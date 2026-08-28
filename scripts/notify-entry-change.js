@@ -12,6 +12,8 @@ const FORCE_RUN = String(process.env.FORCE_RUN || "").toLowerCase() === "true";
 
 // 이벤트 실행 가능 시각(KST). 이 시각 전에는 확인만 하고 실행하지 않는다.
 const WINDOW_START_HOUR = 15;
+// 퇴근 시각(KST). 지연 배달된 트리거가 늦은 시각에 입차시간을 덮어쓰지 않도록 이 시각부터는 실행하지 않는다.
+const WINDOW_END_HOUR = 18;
 // 입차시간이 오늘 이 시각(KST, 분 단위) 이후로 잡혀 있고 무료쿠폰까지 붙어 있으면 오늘 이벤트가 이미 실행된 것으로 본다.
 // 이벤트는 15시 이후에만 실행되고 입차시간을 현재-6~10분으로 잡으므로 실행 결과는 항상 14:50 이후가 된다.
 const DONE_THRESHOLD_MINUTES = 14 * 60 + 45;
@@ -169,10 +171,12 @@ async function main() {
   const now = kstParts();
   const nowLabel = `${pad(now.hour)}:${pad(now.minute)} KST`;
   const beforeWindow = now.hour < WINDOW_START_HOUR;
+  const afterWindow = now.hour >= WINDOW_END_HOUR;
 
   console.log(`=== 입차시간 자동 변경 + 쿠폰 적용 확인 (현재 ${nowLabel}) ===`);
   if (FORCE_RUN) console.log("강제 실행 모드 - 시간/중복 확인 무시");
   else if (beforeWindow) console.log(`${WINDOW_START_HOUR}시 이전이라 상태 확인만 하고 이벤트는 실행하지 않습니다.`);
+  else if (afterWindow) console.log(`${WINDOW_END_HOUR}시 이후(퇴근)라 상태 확인만 하고 이벤트는 실행하지 않습니다.`);
 
   const token = await login();
   console.log("로그인 성공");
@@ -193,6 +197,11 @@ async function main() {
 
       if (!FORCE_RUN && beforeWindow) {
         console.log(`${vehicle}: 미실행 상태 - ${WINDOW_START_HOUR}시 이후 트리거에서 실행 예정`);
+        continue;
+      }
+
+      if (!FORCE_RUN && afterWindow) {
+        console.log(`${vehicle}: 미실행 상태 - ${WINDOW_END_HOUR}시 이후라 오늘은 실행하지 않습니다.`);
         continue;
       }
 
