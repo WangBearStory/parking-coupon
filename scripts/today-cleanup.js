@@ -6,6 +6,7 @@ const VEHICLES = [
   { plate: "16마1011", slackUser: "U0AE6FTUWQ0" },
   { plate: "127조9937", slackUser: "U0ADA5TB3TQ" },
   { plate: "328서3376", slackUser: "U0AE046CVLJ" },
+  { plate: "53우3509", slackUser: "U0ADTN8GDB5" },
 ];
 
 const COUPON_DURATION = {
